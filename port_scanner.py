@@ -5,73 +5,76 @@ def get_open_ports(target, port_range, verbose=False):
 
     start_port, end_port = port_range
 
-    # Función auxiliar para detectar IPs
-    def looks_like_ip(value):
-        parts = value.split(".")
+    def looks_like_ip(t):
+        parts = t.split(".")
         return len(parts) == 4 and all(p.isdigit() for p in parts)
 
     ip = None
     hostname = None
 
-    # ----------------------------------------
-    # 1) Resolver y validar target
-    # ----------------------------------------
+    # -----------------------------
+    # Resolver IP / hostname
+    # -----------------------------
     if looks_like_ip(target):
-        # Parece IP → Validar formato
+        # validar IP
         try:
             socket.inet_aton(target)
-            ip = target
         except:
             return "Error: Invalid IP address"
 
-        # Reverse DNS si existe
+        ip = target
+
+        # intentar reverse DNS
         try:
             hostname = socket.gethostbyaddr(ip)[0]
         except:
             hostname = ip
 
     else:
-        # Es hostname → resolver
+        # resolver hostname a IP
         try:
             ip = socket.gethostbyname(target)
             hostname = target
         except:
             return "Error: Invalid hostname"
 
-    # ----------------------------------------
-    # 2) Escaneo de puertos
-    # ----------------------------------------
+    # -----------------------------
+    # Escaneo
+    # -----------------------------
     open_ports = []
 
     for port in range(start_port, end_port + 1):
 
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(0.5)
+        for _ in range(3):   # reintentos para evitar bloqueos
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(0.05)
+                result = sock.connect_ex((ip, port))
+                sock.close()
 
-        result = sock.connect_ex((ip, port))
-        sock.close()
+                if result == 0:
+                    open_ports.append(port)
+                    break
 
-        if result == 0:
-            open_ports.append(port)
+            except:
+                pass
 
-    # ----------------------------------------
-    # 3) Modo verbose
-    # ----------------------------------------
+    # -----------------------------
+    # Verbose
+    # -----------------------------
     if verbose:
-        lines = []
 
-        # Si target es IP sin hostname → no usar paréntesis
         if hostname == ip:
-            lines.append(f"Open ports for {ip}")
+            header = f"Open ports for {ip}"
         else:
-            lines.append(f"Open ports for {hostname} ({ip})")
+            header = f"Open ports for {hostname} ({ip})"
 
-        lines.append("PORT     SERVICE")
+        out = [header, "PORT     SERVICE"]
 
         for port in open_ports:
             service = ports_and_services.get(port, "unknown")
-            lines.append(f"{port:<9}{service}")
+            out.append(f"{port:<9}{service}")
 
-        return "\n".join(lines)
+        return "\n".join(out)
 
     return open_ports
